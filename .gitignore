@@ -1,0 +1,17 @@
+backend/venv/
+venv/
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+.env
+.venv/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+*.log
