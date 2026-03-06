@@ -1,5 +1,3 @@
-
-
 import asyncio
 import json
 import logging
@@ -55,10 +53,7 @@ def _resolve_session(session_id: str):
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ENDPOINT 1 — Upload CSV (StreamingResponse)
-# ─────────────────────────────────────────────────────────────────────────────
-
+#Endpoint 1: CSV Uploader
 @app.post("/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
  
@@ -71,25 +66,36 @@ async def upload_csv(file: UploadFile = File(...)):
 
     async def event_stream():
         try:
-            # ── Step 1: Parse + Clean (no OpenAI, instant) ───────────────
             parsed = parse_csv(file_bytes, filename)
             df_clean, cleaning_report = clean_data(parsed["dataframe"])
 
             schema = {col: str(dtype) for col, dtype in df_clean.dtypes.items()}
             sample_rows = df_clean.tail(5).where(df_clean.notna(), other=None).to_dict(orient="records")
+
+            column_stats = {}
+            for col in df_clean.columns:
+                stat = {
+                    "dtype": str(df_clean[col].dtype),
+                    "non_null_ratio": round(float(df_clean[col].notna().mean()), 4),
+                    "unique_count": int(df_clean[col].nunique(dropna=True)),
+                }
+                if df_clean[col].dtype.kind in ("i", "f"): 
+                    desc = df_clean[col].describe()
+                    stat.update({
+                        "min": round(float(desc["min"]), 4),
+                        "max": round(float(desc["max"]), 4),
+                        "mean": round(float(desc["mean"]), 4),
+                        "median": round(float(desc["50%"]), 4),
+                        "std": round(float(desc["std"]), 4),
+                    })
+                column_stats[col] = stat
+
             dataset_profile = {
                 "row_count": int(len(df_clean)),
-                "column_stats": {
-                    col: {
-                        "dtype": str(df_clean[col].dtype),
-                        "non_null_ratio": float(df_clean[col].notna().mean()),
-                        "unique_count": int(df_clean[col].nunique(dropna=True)),
-                    }
-                    for col in df_clean.columns
-                },
+                "column_stats": column_stats,
             }
 
-            # Store in session for /generate-chart to use later
+            
             _session_store[filename] = {
                 "df_clean":    df_clean,
                 "schema":      schema,
@@ -97,7 +103,7 @@ async def upload_csv(file: UploadFile = File(...)):
                 "dataset_profile": dataset_profile,
             }
 
-            # ── Event 1: Send cleaning report immediately ─────────────────
+            
             yield json.dumps({
                 "event":           "cleaning_done",
                 "session_id":      filename,
@@ -118,7 +124,7 @@ async def upload_csv(file: UploadFile = File(...)):
                 sample_rows,
             )
 
-            # ── Event 2: Send suggestions when OpenAI responds ───────────
+            
             yield json.dumps({
                 "event":         "suggestions_ready",
                 "suggestions":   suggestions.get("suggestions", []),
@@ -135,9 +141,7 @@ async def upload_csv(file: UploadFile = File(...)):
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ENDPOINT 2 — Generate Chart (normal JSON response)
-# ─────────────────────────────────────────────────────────────────────────────
+#Endpoint 2: Chart Generation JSON
 
 @app.post("/generate-chart")
 async def generate_chart_endpoint(
@@ -162,6 +166,11 @@ async def generate_chart_endpoint(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="user_config must be valid JSON.")
 
+    logger.info(
+        "[generate-chart] session_id=%s, raw user_config=%s",
+        session_id, json.dumps(config_dict, default=str),
+    )
+
     try:
         validation = validate_chart_config(
             schema=session["schema"],
@@ -184,10 +193,3 @@ async def generate_chart_endpoint(
         "final_config":           final_config,
         "interpretation":         validation.get("interpretation", {}),
     }
-
-
-
-
-# @app.get("/health")
-# def health_check():
-#     return {"status": "ok", "version": app.version}
