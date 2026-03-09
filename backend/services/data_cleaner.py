@@ -5,7 +5,7 @@ def clean_data(df: pd.DataFrame) -> tuple:
     report = []
     df = df.copy()
 
-    # 1. Drop empty columns
+    #Dropping all the unnecessary columns 
     empty_cols = [col for col in df.columns if df[col].isna().all()]
     if empty_cols:
         df.drop(columns=empty_cols, inplace=True)
@@ -14,17 +14,17 @@ def clean_data(df: pd.DataFrame) -> tuple:
             "message": f"Dropped {len(empty_cols)} empty column(s): {empty_cols}"
         })
 
-    # 2. Remove duplicate rows
+    #Duplicates removal
     duplicate_count = df.duplicated().sum()
     if duplicate_count > 0:
         df.drop_duplicates(inplace=True)
         df.reset_index(drop=True, inplace=True)
         report.append({
             "type": "duplicates_removed",
-            "message": f"Removed {duplicate_count} duplicate row(s)."
+            "message": f"Removed {duplicate_count} duplicate row or rows."
         })
 
-    # 3 & 4. Strip whitespace and normalize casing
+    #Effective formatting
     string_cols = df.select_dtypes(include="object").columns.tolist()
     whitespace_fixed = []
     casing_fixed = []
@@ -52,7 +52,7 @@ def clean_data(df: pd.DataFrame) -> tuple:
             "message": f"Normalised text casing in: {', '.join(casing_fixed)}"
         })
 
-    # 5. Convert numeric-like strings
+    #Convert numeric strings
     converted_cols = []
     for col in string_cols:
         if col not in df.columns:
@@ -71,7 +71,7 @@ def clean_data(df: pd.DataFrame) -> tuple:
             "message": f"Converted to numeric: {converted_cols}"
         })
 
-    # 6. Fill null values
+    #Fill null values
     null_report = []
 
     for col in df.columns:
@@ -99,7 +99,7 @@ def clean_data(df: pd.DataFrame) -> tuple:
             "message": "Filled missing values — " + " | ".join(null_report)
         })
 
-    # 7. Flag negative values
+    #Flag negative values
     negative_report = []
     for col in df.select_dtypes(include="number").columns:
         negative_count = (df[col] < 0).sum()
@@ -115,7 +115,7 @@ def clean_data(df: pd.DataFrame) -> tuple:
     if not report:
         report.append({
             "type": "no_issues_found",
-            "message": "Dataset looks clean — no issues detected."
+            "message": "Dataset looks clean. No issues detected."
         })
 
     return df, report
